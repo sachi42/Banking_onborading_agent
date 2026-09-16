@@ -25,4 +25,13 @@ router.post('/:id/review', async (req, res) => {
   res.json(result)
 })
 
+// Create or upload a case (accepts JSON body with the onboarding case)
+router.post('/', (req, res) => {
+  const payload = req.body
+  if (!payload || !payload.id) return res.status(400).json({ error: 'missing id or payload' })
+  const insert = db.prepare('INSERT OR REPLACE INTO cases (id, payload) VALUES (?, ?)')
+  insert.run(payload.id, JSON.stringify(payload))
+  res.status(201).json({ id: payload.id })
+})
+
 export default router
