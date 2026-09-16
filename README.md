@@ -3,7 +3,7 @@
 Minimal full-stack TypeScript project demonstrating a multi-agent workflow for reviewing synthetic banking onboarding cases.
 
 Contents:
-- backend: Node + Express + TypeScript + SQLite (mocked AI agents)
+- backend: Node + Express + TypeScript with a lightweight DB (SQLite or JSON fallback)
 - frontend: React + Vite + TypeScript minimal UI
 
 Run (backend):
@@ -13,7 +13,7 @@ Run (backend):
 3. npm run seed
 4. npm run dev
 
-Note: The backend uses a native SQLite binding (`better-sqlite3`) which requires a compatible Node toolchain. The easiest way to run the project locally is to install `nvm` and use Node 18 or 20.
+Note: The backend prefers `better-sqlite3` but can fall back to a JSON-backed store if your environment cannot build native modules. The easiest way to run the project locally is to install `nvm` and use Node 18 or 20 for full SQLite support.
 
 macOS quick setup (Homebrew + nvm):
 
@@ -37,8 +37,7 @@ npm run seed
 npm run dev
 ```
 
-If you cannot install Homebrew or nvm, consider using Docker with a Postgres service (not included by default in this repo).
-Note: the project will attempt to install `better-sqlite3` as an optional dependency. If your environment cannot build native modules, `npm install` will continue and the backend will run using a JSON-backed fallback store. For full SQLite support install `nvm` and use Node 18 as described above.
+If you cannot install Homebrew or nvm, you can still run the project; it will fall back to a simple JSON-backed store when native SQLite bindings are unavailable.
 
 Run (frontend):
 
@@ -46,9 +45,17 @@ Run (frontend):
 2. npm install
 3. npm run dev
 
+Frontend / backend host configuration
+- The frontend uses a `BACKEND` URL to call the API. By default it calls `http://localhost:4000`. To change this, set the Vite env `VITE_BACKEND_URL` before starting the frontend dev server, for example:
+
+```bash
+export VITE_BACKEND_URL=http://localhost:4000
+npm run dev
+```
+
 .env.example contains DB path and PORT.
 
-Architecture and notes are in this README and the code. The agents are simple deterministic implementations (mock LLM). See `/backend/src/agents` and `/backend/src/orchestrator.ts` for the workflow.
+Architecture and notes are in this README and [ARCHITECTURE.md]. Agents are deterministic heuristics by default (mock behavior). A runtime LLM key flow exists so you can paste an API key in the UI for demonstration — keys are validated but not persisted by the server. Agents will only call an LLM if explicitly wired to use a runtime key (this demo keeps agents mock-first for reproducibility).
 
 AI tools used: GitHub Copilot (assistive), local TypeScript authoring.
 

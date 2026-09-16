@@ -1,157 +1,66 @@
-Multi-Agent Onboarding Case Reviewer — Architecture and Design
+Multi-Agent Onboarding Case Reviewer — Architecture (concise)
 
 Overview
 
-This document explains the project structure, agent responsibilities, orchestration approach, assumptions, completed functionality, limitations, security considerations, and a productionisation roadmap.
+A short, practical description of how this demo is structured and how the runtime LLM flow fits in.
 
-Files and folders
+Project layout (high level)
 
 - backend/
   - src/
-    - index.ts — Express app entrypoint, loads env, mounts routes
-    - db.ts — lightweight SQLite connection and schema creation (uses `better-sqlite3`)
-    - seed.ts — writes a synthetic sample case and inserts it into the DB
-    - types.ts — TypeScript typed contracts for `OnboardingCase`, `AgentInput`, `AgentOutput`, `OrchestratorResult`, and `AutonomyMode`
-    - orchestrator.ts — supervisor that coordinates agent execution and builds the execution trace
-    - routes/cases.ts — API endpoints: list, fetch, and trigger review for a case
-    - agents/* — specialised agents (DocumentCompletenessAgent, IdentityConsistencyAgent, RiskIndicatorAgent, RecommendationAgent)
-    - tests/agent.test.ts — small integration test using the orchestrator
-  - package.json, tsconfig.json — backend tooling and scripts
-
-- frontend/
-  - src/
-    - App.tsx — minimal React UI to select a case, pick autonomy mode, run review, and display results
-    - main.tsx, vite.config.ts, index.html — Vite + React scaffolding
-  - package.json, tsconfig.json — frontend tooling
-
-- .env.example — placeholders for runtime configuration
+    - index.ts — Express entrypoint and route mounting
+    - db.ts — DB layer: prefers `better-sqlite3` (SQLite) but falls back to a JSON-backed store when native modules can't be built
+    - seed.ts — writes a synthetic sample case used by the demo
+    - types.ts — shared TypeScript contracts (`OnboardingCase`, `AgentInput`, `AgentOutput`, `OrchestratorResult`)
+    - orchestrator.ts — coordinates agents and builds an auditable `trace`
+    - routes/
+      - cases.ts — list/fetch/create case endpoints and `POST /cases/:id/review` to run a review
+      - llm.ts — lightweight LLM test/config endpoints (validates runtime keys but does not persist secrets)
+    - agents/* — small, single-purpose agents (DocumentCompleteness, IdentityConsistency, RiskIndicator, Recommendation)
+- frontend/ — Vite + React UI in `src/App.tsx`
+- FUTURE_ENHANCEMENTS.md — short next-steps summary
 - README.md — quick start
-- ARCHITECTURE.md — (this file)
 
-Agent responsibilities
+Design notes (runtime behavior)
 
-Each agent is an independent, typed module with a single responsibility. Agents accept an `AgentInput` containing the typed `OnboardingCase` and return an `AgentOutput<T>` describing a structured result and a short explanation.
+- Deterministic-first: agents are implemented as simple, deterministic heuristics by default. This keeps the demo reproducible for testing and interviews.
+- Runtime LLM key flow: the UI can accept an API key (OpenAI) and validate it with `/llm/test`. The key is NOT persisted on the server. To demo agent LLM usage, the frontend can send the key with the review request as `llmKey` (the backend forwards it to agents as `AgentInput.context.llmKey`). Agents must explicitly read that field to call an external LLM.
+- Mock-first policy: the project is intentionally mock-first — LLM calls are optional and must be wired per-agent. This repo keeps agents heuristic to avoid unexpected nondeterminism unless you enable LLM behavior.
 
-- DocumentCompletenessAgent
-  - Goal: Verify presence of required supporting documents (currently `id_document` and `proof_of_address`).
-  - Input: `OnboardingCase`
-  - Output: `{ missing: string[], presentCount: number }`
-  - Termination: completes synchronously; non-blocking.
+Orchestration flow
 
-- IdentityConsistencyAgent
-  - Goal: Check identity/profile fields against address and detect simple mismatches (e.g., nationality vs address country).
-  - Input: `OnboardingCase`
-  - Output: `{ consistent: boolean, mismatches: string[] }`
+1. `POST /cases/:id/review` triggers `runReview`
+2. Orchestrator runs agents in order and collects each `AgentOutput` into a `trace`:
+   - DocumentCompletenessAgent
+   - IdentityConsistencyAgent
+   - RiskIndicatorAgent
+   - RecommendationAgent (consumes prior outputs)
+3. Two autonomy modes are supported and passed in the review request body: `human_review_on_exception` and `human_approval_required`.
+4. If a runtime `llmKey` is provided it is included in `AgentInput.context.llmKey` for agents that support LLM calls.
 
-- RiskIndicatorAgent
-  - Goal: Compute a simple numeric risk score from flags (PEP, negative news) and income bracket.
-  - Input: `OnboardingCase`
-  - Output: `{ score: number, flags: string[] }`
+DB and persistence
 
-- RecommendationAgent
-  - Goal: Consolidate prior agent outputs and produce a final recommendation: `Approve`, `Refer`, `Reject`, or `PendingApproval`.
-  - Input: list of `AgentOutput` entries (the execution trace)
-  - Output: `{ decision, reasons }`
+- Local demo: SQLite is used when available. If `better-sqlite3` cannot be built, a JSON-backed fallback store keeps the app runnable without native builds.
 
-Workflow and orchestration approach
+- Note: For production you'd replace the lightweight store with a managed relational database and migrations; this repo keeps the demo simple and self-contained.
 
-- The orchestrator (`runReview`) coordinates execution in a linear pipeline:
-  1. Run DocumentCompletenessAgent
-  2. Run IdentityConsistencyAgent
-  3. Run RiskIndicatorAgent
-  4. Run RecommendationAgent (consumes prior outputs)
+Security and secrets
 
-- The orchestrator collects each agent's `AgentOutput` into a `trace` array for auditability and explanation.
-- Two autonomy modes are supported:
-  - `human_review_on_exception`: if an agent throws or fails, the orchestrator returns `Refer` immediately.
-  - `human_approval_required`: regardless of result, the orchestrator marks the outcome as `PendingApproval` and sets `requiresApproval=true`.
-- Failure handling: agent exceptions are caught; the orchestrator appends a failed output to the trace and either refers or continues based on the mode.
+- The UI validates a pasted API key but the server does not store it. For production, use a secrets manager and never store keys in plaintext or in the repo.
+- Redact PII before logging or sending to external providers. Prefer strict JSON schemas for any LLM outputs before trusting them.
 
-Type safety and contracts
+Run & debug notes
 
-- All agents use `AgentInput` / `AgentOutput<T>` to enforce a consistent typed contract.
-- RecommendationAgent expects prior agents to populate predictable shapes; the orchestrator enforces ordering so RecommendationAgent can find earlier outputs by `agent` field.
+- Backend default: http://localhost:4000
+- Frontend default: Vite dev server (e.g. http://localhost:5173)
+- Frontend reads `VITE_BACKEND_URL` or falls back to `http://localhost:4000` to build API requests.
+- To demo LLM validation: choose OpenAI in the UI, paste a key, click "Set API Key" — the app validates the key and keeps it in memory only for that session. Running a review will include the key in the request if provider is OpenAI.
 
-Assumptions
+When to enable LLM calls
 
-- Synthetic data only — seed writes a sample case.
-- Agents are deterministic heuristic implementations for reliability in a monitored exam setting.
-- Single-machine, single-process orchestration — no distributed or parallel execution required for the assignment.
-- The DB is local SQLite for simplicity and reproducibility.
+- Enable a single agent first (e.g., RecommendationAgent) and validate output schemas (zod/ajv) before expanding.
+- Keep deterministic fallbacks so that failures or parse errors do not block the orchestrator.
 
-Completed functionality
+Notes
 
-- Full-stack scaffold (React + Node + TypeScript) with a working demo path:
-  - Seed a sample case
-  - List and fetch cases via API
-  - Execute a multi-agent review with two autonomy modes
-  - Present execution trace and final recommendation in the frontend
-- Type contracts between agents and orchestrator
-- Basic automated test for an approve path
-
-Known limitations
-
-- Agents are simplistic heuristics; not using language models.
-- No persistent audit log beyond the run-time trace returned by API — runs are not stored as audit records.
-- No authentication or RBAC for human approval flows.
-- No schema migration tooling for the DB (e.g., knex or TypeORM).
-- No validation or runtime schema enforcement (e.g., JSON schema) for agent outputs.
-- Error handling is coarse-grained; more granular retry/backoff behavior is necessary for production.
-
-Security considerations
-
-- No secrets are stored in repo; `.env.example` contains placeholders — real keys must go into `.env` and never be committed.
-- If LLM API keys are added, ensure they are loaded from environment variables and not committed.
-- For production, enable TLS, authentication, input validation, rate limits, and RBAC for approval flows.
-- Sanitize any external LLM responses before parsing/executing; prefer strict JSON schemas and runtime validation.
-
-Productionisation roadmap
-
-Short-term:
-- Replace SQLite with managed RDBMS (Postgres)
-- Add DB migrations and a job queue for asynchronous agent execution
-- Persist review runs and provide an audit trail of decisions and human approvals
-- Add authentication and authorization (OAuth / OIDC)
-- Add structured logging and metrics
-
-Medium-term:
-- Introduce an LLM adapter layer with response validation and rate limiting
-- Add feature flags to enable/disable autonomous steps per customer
-- Introduce parallel agent execution where possible and safe
-
-Long-term:
-- Implement canary releases for autonomy increases, A/B testing with human-in-the-loop
-- Add formal policies and safety checks (policy agents) that enforce compliance
-
-How autonomy could be increased safely over time
-
-- Start with `human_approval_required` for high-risk profile groups.
-- Instrument decision outcomes, false positives/negatives, and operator overrides.
-- Use conservative thresholds: only escalate to autonomous `Approve` for very low-risk buckets.
-- Add monitoring dashboards and circuit breakers to revert to human review if error rates rise.
-- Introduce explainability metadata from LLMs (chain-of-thought redaction) and require strict JSON outputs validated by schemas.
-
-Appendix: How to run locally
-
-1. Backend
-
-```bash
-cd backend
-npm install
-npm run seed
-npm run dev
-```
-
-2. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend dev server proxies `/cases` to `http://localhost:4000` by default.
-
-Contact / Notes
-
-- All sample data is synthetic. For the interview submission, include commit history and note any AI tooling you used in the README.
+This file is intentionally concise — more detailed architecture diagrams and sequence charts belong in `ARCHITECTURE.md` expansions or `docs/` when moving toward production.
