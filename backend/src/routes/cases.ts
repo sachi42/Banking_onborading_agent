@@ -17,11 +17,12 @@ router.get('/:id', (req, res) => {
 })
 
 router.post('/:id/review', async (req, res) => {
-  const { mode } = req.body as { mode?: AutonomyMode }
+  const { mode, llmKey } = req.body as { mode?: AutonomyMode; llmKey?: string }
+  console.log('[cases] review requested for', req.params.id, 'mode=', mode, 'llmKey present=', !!llmKey)
   const row = db.prepare('SELECT payload FROM cases WHERE id = ?').get(req.params.id)
   if (!row) return res.status(404).json({ error: 'not found' })
   const payload = JSON.parse(row.payload)
-  const result = await runReview(payload, mode || 'human_review_on_exception')
+  const result = await runReview(payload, mode || 'human_review_on_exception', llmKey)
   res.json(result)
 })
 

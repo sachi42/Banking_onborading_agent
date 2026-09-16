@@ -3,12 +3,16 @@ import React, { useEffect, useState } from 'react'
 type Mode = 'human_approval_required' | 'human_review_on_exception'
 
 export default function App() {
+  const BACKEND = (import.meta as any)?.env?.VITE_BACKEND_URL || 'http://localhost:4000'
   const [cases, setCases] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>('human_review_on_exception')
   const [result, setResult] = useState<any>(null)
   const [reviews, setReviews] = useState<any[]>([])
   const [showCreate, setShowCreate] = useState(false)
+  const [provider, setProvider] = useState<'mock'|'openai'>('mock')
+  const [apiKeyStatus, setApiKeyStatus] = useState<string | null>(null)
+  const [llmKey, setLlmKey] = useState<string | null>(null)
   const [formState, setFormState] = useState({
     id: '', name: '', nationality: '', idType: 'passport', idNumber: '',
     line1: '', city: '', country: '', employer: '', role: '', incomeBracket: 'medium',
@@ -17,6 +21,10 @@ export default function App() {
   })
 
   useEffect(() => { fetch('/cases').then(r => r.json()).then(setCases).catch(()=>{}) }, [])
+
+  useEffect(()=>{
+    // default provider remains 'mock' on refresh; no stored key
+  }, [])
 
   function refreshCases() {
     fetch('/cases').then(r => r.json()).then(setCases).catch(()=>{})
@@ -53,16 +61,65 @@ export default function App() {
 
   async function runReview() {
     if (!selected) return
-    const res = await fetch(`/cases/${selected}/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode }) })
+    const payload: any = { mode }
+    if (provider === 'openai' && llmKey) payload.llmKey = llmKey
+    const res = await fetch(`${BACKEND}/cases/${selected}/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const json = await res.json()
     setResult(json)
     // fetch reviews history
     fetch(`/cases/${selected}/reviews`).then(r=>r.json()).then(setReviews).catch(()=>setReviews([]))
   }
 
+  async function setProviderAndKey(p: 'mock'|'openai') {
+    setProvider(p)
+    if (p === 'mock') {
+      setApiKeyStatus(null)
+      // do not persist provider or keys; mock is the default for this session
+      return
+    }
+    const key = prompt('Enter API key for OpenAI (will be stored in localStorage for this session)')
+    if (!key) return
+    const keyTrim = key.trim()
+    if (!keyTrim) return
+    // test key
+    try {
+      const res = await fetch(`${BACKEND}/llm/test`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ provider: 'openai', key: keyTrim }) })
+      let bodyText = ''
+      try { bodyText = await res.text() } catch (e) { bodyText = '' }
+      // try to parse JSON if possible
+      let bodyJson: any = null
+      try { bodyJson = JSON.parse(bodyText) } catch (e) { /* not JSON */ }
+      if (!res.ok) {
+        setApiKeyStatus(`Invalid: ${res.status} ${bodyText || (bodyJson && bodyJson.message) || 'bad key'}`)
+        console.error('LLM test failed', res.status, bodyText)
+        return
+      }
+        const serverMsg = (bodyJson && (bodyJson.message || JSON.stringify(bodyJson))) || bodyText || 'ok'
+        setLlmKey(keyTrim) // keep key in memory only for this session
+        setApiKeyStatus(`OK: ${serverMsg}`)
+    } catch (e: any) {
+      setApiKeyStatus(`Network error: ${e?.message || String(e)}`)
+      console.error('LLM test network error', e)
+      return
+    }
+  }
+
   return (
     <div style={{ padding: 20, fontFamily: 'Arial, sans-serif' }}>
       <h2>Multi-Agent Onboarding Case Reviewer</h2>
+      <div style={{ marginTop: 8 }}>
+        <label>AI Provider: </label>
+        <select value={provider} onChange={e=>setProviderAndKey(e.target.value as any)}>
+          <option value="mock">Mock (deterministic)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+        {provider === 'openai' && (
+          <span style={{ marginLeft: 8 }}>
+            <button onClick={()=>setProviderAndKey('openai')}>Set API Key</button>
+            <span style={{ marginLeft: 8 }}>{apiKeyStatus ?? 'No key'}</span>
+          </span>
+        )}
+      </div>
       <div>
         <label>Case: </label>
         <select value={selected ?? ''} onChange={e=>setSelected(e.target.value || null)}>

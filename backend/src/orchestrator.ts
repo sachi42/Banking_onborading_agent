@@ -4,9 +4,9 @@ import * as idAgent from './agents/identityConsistencyAgent'
 import * as riskAgent from './agents/riskIndicatorAgent'
 import * as recAgent from './agents/recommendationAgent'
 
-export async function runReview(casePayload: OnboardingCase, mode: AutonomyMode = 'human_review_on_exception'): Promise<OrchestratorResult> {
+export async function runReview(casePayload: OnboardingCase, mode: AutonomyMode = 'human_review_on_exception', llmKey?: string): Promise<OrchestratorResult> {
   const trace: AgentOutput[] = []
-  const ctx: AgentInput = { case: casePayload }
+  const ctx: AgentInput = { case: casePayload, context: { llmKey } }
 
   // Document completeness
   try {
