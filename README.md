@@ -59,4 +59,13 @@ Architecture and notes are in this README and [ARCHITECTURE.md]. Agents are dete
 
 AI tools used: GitHub Copilot (assistive), local TypeScript authoring.
 
+Developer disclosure
+
+- Tools used: GitHub Copilot (assistive) was used during development.
+- Data & DB: sample data is synthetic. The demo uses SQLite (or a JSON fallback) for local testing.
+- LLM: agents are mock-first; the UI validates an API key at runtime but keys are not persisted. Future enhancements (see `FUTURE_ENHANCEMENTS.md`) describe wiring LLM providers into agents.
+- Author decisions: Enhancement choices in `FUTURE_ENHANCEMENTS.md` were made by the candidate.
+
+See `DEVELOPER_NOTES.md` for a short summary of architectural and implementation decisions made by the developer.
+
 License: synthetic sample data only.
