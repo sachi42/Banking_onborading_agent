@@ -1,0 +1,40 @@
+{
+  "id": "case-1",
+  "customerProfile": {
+    "name": "Alice Example",
+    "dob": "1990-01-01",
+    "nationality": "Freedonia"
+  },
+  "identity": {
+    "idType": "passport",
+    "idNumber": "X1234567"
+  },
+  "address": {
+    "line1": "1 Main St",
+    "city": "Capital",
+    "country": "Freedonia"
+  },
+  "employment": {
+    "employer": "Acme Corp",
+    "role": "Engineer",
+    "incomeBracket": "medium"
+  },
+  "supportingDocuments": [
+    {
+      "type": "id_document",
+      "present": true
+    },
+    {
+      "type": "proof_of_address",
+      "present": false
+    },
+    {
+      "type": "employment_letter",
+      "present": true
+    }
+  ],
+  "basicRiskIndicators": {
+    "politicallyExposed": false,
+    "negativeNews": false
+  }
+}
