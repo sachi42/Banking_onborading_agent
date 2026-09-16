@@ -34,4 +34,22 @@ router.post('/', (req, res) => {
   res.status(201).json({ id: payload.id })
 })
 
+// Persist human approval decision for a case
+router.post('/:id/approve', (req, res) => {
+  const { decision, reviewer, comment } = req.body as { decision?: string; reviewer?: string; comment?: string }
+  if (!decision || !['Approve', 'Reject', 'Refer'].includes(decision)) return res.status(400).json({ error: 'invalid decision' })
+  const row = db.prepare('SELECT payload FROM cases WHERE id = ?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'case not found' })
+  // persist review
+  const { addReview } = require('../approvals')
+  const rec = addReview(req.params.id, decision as any, reviewer, comment)
+  res.status(201).json(rec)
+})
+
+router.get('/:id/reviews', (req, res) => {
+  const { getReviewsForCase } = require('../approvals')
+  const rows = getReviewsForCase(req.params.id)
+  res.json(rows)
+})
+
 export default router

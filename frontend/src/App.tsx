@@ -7,6 +7,7 @@ export default function App() {
   const [selected, setSelected] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>('human_review_on_exception')
   const [result, setResult] = useState<any>(null)
+  const [reviews, setReviews] = useState<any[]>([])
   const [showCreate, setShowCreate] = useState(false)
   const [formState, setFormState] = useState({
     id: '', name: '', nationality: '', idType: 'passport', idNumber: '',
@@ -55,6 +56,8 @@ export default function App() {
     const res = await fetch(`/cases/${selected}/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode }) })
     const json = await res.json()
     setResult(json)
+    // fetch reviews history
+    fetch(`/cases/${selected}/reviews`).then(r=>r.json()).then(setReviews).catch(()=>setReviews([]))
   }
 
   return (
@@ -125,6 +128,37 @@ export default function App() {
           <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(result, null, 2)}</pre>
         </div>
       )}
+      {result && result.requiresApproval && selected && (
+        <div style={{ marginTop: 12 }}>
+          <h4>Human Approval Required</h4>
+          <button onClick={async ()=>{
+            await fetch(`/cases/${selected}/approve`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ decision: 'Approve', reviewer: 'operator' }) })
+            const res = await fetch(`/cases/${selected}/reviews`)
+            setReviews(await res.json())
+            alert('Approved')
+          }}>Approve</button>
+          <button style={{ marginLeft: 8 }} onClick={async ()=>{
+            const reason = prompt('Reason for rejection') || ''
+            await fetch(`/cases/${selected}/approve`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ decision: 'Reject', reviewer: 'operator', comment: reason }) })
+            const res = await fetch(`/cases/${selected}/reviews`)
+            setReviews(await res.json())
+            alert('Rejected')
+          }}>Reject</button>
+        </div>
+      )}
+
+      {reviews.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <h4>Approval History</h4>
+          <ul>
+            {reviews.map((r:any)=> (
+              <li key={r.id}>{r.timestamp} — {r.reviewer ?? 'operator'} — {r.decision} {r.comment ? `: ${r.comment}` : ''}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
+
+// add reviews state
